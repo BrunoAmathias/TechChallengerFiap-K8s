@@ -1,0 +1,9 @@
+node_modules/
+package-lock.json
+
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+generated.tf
+crash.log

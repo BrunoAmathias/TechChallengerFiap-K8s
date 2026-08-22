@@ -1,0 +1,37 @@
+name: CD - Deploy Infra Kubernetes (main)
+
+on:
+  push:
+    branches:
+      - main
+
+defaults:
+  run:
+    working-directory: TFs
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Configurar Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.8"
+
+      - name: Inicializar Terraform
+        run: terraform init -input=false
+
+      - name: Aplicar infraestrutura
+        run: terraform apply -auto-approve -input=false
