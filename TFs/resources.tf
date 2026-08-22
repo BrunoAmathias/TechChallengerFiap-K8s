@@ -184,15 +184,15 @@ resource "aws_lb_target_group" "api" {
   load_balancing_anomaly_mitigation  = "off"
   load_balancing_cross_zone_enabled  = "use_load_balancer_configuration"
   name                               = "techchallenge-dev-api-tg-V2"
-  port                                = 30643
-  protocol                            = "HTTP"
-  protocol_version                    = "HTTP1"
-  proxy_protocol_v2                   = null
-  slow_start                          = 0
-  tags                                 = {}
-  tags_all                             = {}
-  target_type                         = "instance"
-  vpc_id                               = "vpc-079bb75c5a7f7678d"
+  port                               = 30643
+  protocol                           = "HTTP"
+  protocol_version                   = "HTTP1"
+  proxy_protocol_v2                  = null
+  slow_start                         = 0
+  tags                               = {}
+  tags_all                           = {}
+  target_type                        = "instance"
+  vpc_id                             = "vpc-079bb75c5a7f7678d"
   health_check {
     enabled             = true
     healthy_threshold   = 5
