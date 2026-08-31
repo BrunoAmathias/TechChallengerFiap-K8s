@@ -9,6 +9,7 @@ data "aws_subnets" "default" {
   }
 }
 
-data "aws_iam_role" "lab_role" {
-  name = "LabRole"
+# Role que a AWS criou automaticamente quando o EKS Auto Mode foi habilitado
+data "aws_iam_role" "eks_auto" {
+  name = "AmazonEKSAutoClusterRole"
 }
