@@ -1,4 +1,4 @@
-name: CI - Validação Terraform
+name: CI - Validação Terraform (Neon)
 
 on:
   pull_request:
@@ -10,27 +10,26 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: terraform-ci-${{ github.ref }}
-  cancel-in-progress: true
-
 defaults:
   run:
-    shell: bash
     working-directory: TFs
 
 jobs:
   validate:
-    name: Validar Terraform
+    name: Validar infraestrutura Terraform
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
+
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      TF_VAR_newrelic_license_key: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
 
     steps:
       - name: Checkout código
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Configurar credenciais AWS
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -40,23 +39,46 @@ jobs:
         run: aws sts get-caller-identity
 
       - name: Configurar Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.15.8"
           terraform_wrapper: false
 
+      - name: Validar secrets obrigatórios
+        run: |
+          test -n "$NEON_API_KEY" || {
+            echo "NEON_API_KEY não foi configurado"
+            exit 1
+          }
+
+          test -n "$TF_VAR_newrelic_license_key" || {
+            echo "NEW_RELIC_LICENSE_KEY não foi configurado"
+            exit 1
+          }
+
+          echo "Secrets obrigatórios encontrados."
+
       - name: Checar formatação
         run: terraform fmt -check -recursive
+
+      - name: Validar backend S3
+        run: |
+          if ! aws s3api head-bucket \
+            --bucket techchallenge-dev-tfstate 2>/dev/null; then
+            echo "O bucket techchallenge-dev-tfstate não existe ou não está acessível."
+            exit 1
+          fi
+
+          echo "Backend S3 encontrado."
 
       - name: Inicializar Terraform
         run: terraform init -input=false
 
-      - name: Validar configuração
-        run: terraform validate -no-color
+      - name: Validar sintaxe
+        run: terraform validate
 
-      - name: Gerar plano sem aplicar
+      - name: Gerar plano
         run: |
           terraform plan \
             -input=false \
-            -no-color \
-            -lock-timeout=5m
+            -no-color
