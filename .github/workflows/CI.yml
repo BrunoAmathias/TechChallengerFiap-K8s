@@ -36,7 +36,8 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Validar identidade AWS
-        run: aws sts get-caller-identity
+        run: |
+          aws sts get-caller-identity
 
       - name: Configurar Terraform
         uses: hashicorp/setup-terraform@v4
@@ -59,23 +60,36 @@ jobs:
           echo "Secrets obrigatórios encontrados."
 
       - name: Checar formatação
-        run: terraform fmt -check -recursive
+        run: |
+          terraform fmt -check -recursive
 
       - name: Validar backend S3
         run: |
           if ! aws s3api head-bucket \
-            --bucket techchallenge-dev-tfstate 2>/dev/null; then
-            echo "O bucket techchallenge-dev-tfstate não existe ou não está acessível."
+            --bucket fiap-techchallenger 2>/dev/null; then
+            echo "O bucket fiap-techchallenger não existe ou não está acessível."
             exit 1
           fi
 
-          echo "Backend S3 encontrado."
+          if ! aws s3api head-object \
+            --bucket fiap-techchallenger \
+            --key eks/terraform.tfstate \
+            >/dev/null 2>&1; then
+            echo "O arquivo eks/terraform.tfstate não foi encontrado."
+            exit 1
+          fi
+
+          echo "Bucket e arquivo de state encontrados."
 
       - name: Inicializar Terraform
-        run: terraform init -input=false
+        run: |
+          terraform init \
+            -input=false \
+            -reconfigure
 
       - name: Validar sintaxe
-        run: terraform validate
+        run: |
+          terraform validate
 
       - name: Gerar plano
         run: |
