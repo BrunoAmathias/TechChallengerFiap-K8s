@@ -1,249 +1,304 @@
-# Corrigido a partir do generated.tf - conflitos do modo experimental resolvidos
-
-resource "aws_eks_node_group" "main" {
-  ami_type             = "AL2023_x86_64_STANDARD"
-  capacity_type        = "ON_DEMAND"
-  cluster_name         = "techchallenge-dev"
-  disk_size            = 20
-  force_update_version = null
-  instance_types       = ["t3.small"]
-  labels               = {}
-  node_group_name      = "techchallenge-dev-nodes"
-  node_role_arn        = "arn:aws:iam::698233916383:role/c221562a5587885l16123870t1w698233916-LabEksNodeRole-OeNFZdgwQ8GD"
-  release_version      = "1.36.2-20260810"
-  subnet_ids           = ["subnet-00249abf9b7073d1c", "subnet-05772bc7946cf7bec", "subnet-0d4d265fc897c606b", "subnet-0dd8c43da67ea6c67", "subnet-0fd00fe7e7d7164fd"]
-  tags                 = {}
-  tags_all             = {}
-  version              = "1.36"
-  node_repair_config {
-    enabled = true
-  }
-  scaling_config {
-    desired_size = 1
-    max_size     = 2
-    min_size     = 1
-  }
-  update_config {
-    max_unavailable = 1
-  }
-}
-
 resource "aws_eks_cluster" "main" {
-  bootstrap_self_managed_addons = false
-  enabled_cluster_log_types     = ["api", "audit", "authenticator"]
-  force_update_version          = null
   name                          = "techchallenge-dev"
-  role_arn                      = "arn:aws:iam::698233916383:role/LabRole"
-  tags                          = {}
-  tags_all                      = {}
+  role_arn                      = data.aws_iam_role.eks_auto.arn
   version                       = "1.36"
+  bootstrap_self_managed_addons = false
+
+  enabled_cluster_log_types = [
+    "api",
+    "audit",
+    "authenticator"
+  ]
+
   access_config {
-    authentication_mode                         = "API_AND_CONFIG_MAP"
+    authentication_mode                         = "API"
     bootstrap_cluster_creator_admin_permissions = true
   }
+
   compute_config {
     enabled       = true
     node_pools    = ["general-purpose", "system"]
-    node_role_arn = "arn:aws:iam::698233916383:role/LabRole"
+    node_role_arn = data.aws_iam_role.eks_auto.arn
   }
+
   kubernetes_network_config {
     ip_family         = "ipv4"
     service_ipv4_cidr = "10.100.0.0/16"
+
     elastic_load_balancing {
       enabled = true
     }
   }
+
   storage_config {
     block_storage {
       enabled = true
     }
   }
+
   upgrade_policy {
     support_type = "STANDARD"
   }
+
   vpc_config {
     endpoint_private_access = true
     endpoint_public_access  = true
     public_access_cidrs     = ["0.0.0.0/0"]
-    security_group_ids      = ["sg-0bb5b895bc72c0ebe"]
-    subnet_ids              = ["subnet-00249abf9b7073d1c", "subnet-05772bc7946cf7bec", "subnet-0d4d265fc897c606b", "subnet-0dd8c43da67ea6c67", "subnet-0fd00fe7e7d7164fd"]
+    subnet_ids              = data.aws_subnets.default.ids
   }
+
   zonal_shift_config {
     enabled = false
   }
+
+  # Mantém a tag criada pelo eksctl quando o OIDC foi associado.
+  tags = {
+    "alpha.eksctl.io/cluster-oidc-enabled" = "true"
+  }
 }
 
-resource "aws_vpc_security_group_ingress_rule" "nodeport_test" {
-  cidr_ipv4                    = "45.191.154.144/32"
-  cidr_ipv6                    = null
-  description                  = "Teste NodePort TechChallenge DEV"
-  from_port                    = 30643
-  ip_protocol                  = "tcp"
-  prefix_list_id               = null
-  referenced_security_group_id = null
-  security_group_id            = "sg-08937a402604c43b1"
-  tags                         = null
-  to_port                      = 30643
+# Obtém o certificado utilizado pelo endpoint OIDC do cluster.
+data "tls_certificate" "eks_oidc" {
+  url = aws_eks_cluster.main.identity[0].oidc[0].issuer
 }
 
-resource "aws_vpc_security_group_ingress_rule" "nodeport_from_alb" {
-  cidr_ipv4                    = null
-  cidr_ipv6                    = null
-  description                  = "ALB para NodePort TechChallenge"
-  from_port                    = 30643
-  ip_protocol                  = "tcp"
-  prefix_list_id               = null
-  referenced_security_group_id = "sg-0c4b0fa0a6d1cb624"
-  security_group_id            = "sg-08937a402604c43b1"
-  tags                         = null
-  to_port                      = 30643
+# Provider OIDC necessário para IRSA.
+resource "aws_iam_openid_connect_provider" "eks" {
+  url = aws_eks_cluster.main.identity[0].oidc[0].issuer
+
+  client_id_list = [
+    "sts.amazonaws.com"
+  ]
+
+  thumbprint_list = [
+    data.tls_certificate.eks_oidc.certificates[0].sha1_fingerprint
+  ]
+
+  # Mantém as tags adicionadas pelo eksctl.
+  tags = {
+    "alpha.eksctl.io/cluster-name"   = "techchallenge-dev"
+    "alpha.eksctl.io/eksctl-version" = "0.230.0"
+  }
 }
 
-resource "aws_security_group" "alb" {
-  description = "Acesso HTTP ao ALB TechChallenge DEV 3"
-  egress = [{
-    cidr_blocks      = ["0.0.0.0/0"]
-    description      = ""
-    from_port        = 0
-    ipv6_cidr_blocks = []
-    prefix_list_ids  = []
-    protocol         = "-1"
-    security_groups  = []
-    self             = false
-    to_port          = 0
-  }]
-  ingress = [{
-    cidr_blocks      = ["0.0.0.0/0"]
-    description      = "Acesso HTTP ao ALB TechChallenge DEV"
-    from_port        = 80
-    ipv6_cidr_blocks = []
-    prefix_list_ids  = []
-    protocol         = "tcp"
-    security_groups  = []
-    self             = false
-    to_port          = 80
-    }, {
-    cidr_blocks      = ["45.191.154.144/32"]
-    description      = ""
-    from_port        = 30643
-    ipv6_cidr_blocks = []
-    prefix_list_ids  = []
-    protocol         = "tcp"
-    security_groups  = []
-    self             = false
-    to_port          = 30643
-    }, {
-    cidr_blocks      = []
-    description      = "ALB para NodePort TechChallenge"
-    from_port        = 30643
-    ipv6_cidr_blocks = []
-    prefix_list_ids  = []
-    protocol         = "tcp"
-    security_groups  = []
-    self             = true
-    to_port          = 30643
-  }]
-  name                   = "techchallenge-dev-alb-sg"
-  revoke_rules_on_delete = null
-  tags                   = {}
-  tags_all               = {}
-  vpc_id                 = "vpc-079bb75c5a7f7678d"
+# VPC CNI precisa estar disponível antes do Managed Node Group.
+resource "aws_eks_addon" "vpc_cni" {
+  cluster_name = aws_eks_cluster.main.name
+  addon_name   = "vpc-cni"
 }
 
-resource "aws_lb_listener" "api" {
-  alpn_policy                          = null
-  certificate_arn                      = null
-  load_balancer_arn                    = "arn:aws:elasticloadbalancing:us-east-1:698233916383:loadbalancer/app/techchallenge-dev-api-alb/e55296c5821d250b"
-  port                                 = 80
-  protocol                             = "HTTP"
-  routing_http_response_server_enabled = true
-  tags                                 = {}
-  tags_all                             = {}
-  default_action {
-    order            = 1
-    target_group_arn = "arn:aws:elasticloadbalancing:us-east-1:698233916383:targetgroup/techchallenge-dev-api-tg-V2/115ebfe6fc0e0732"
-    type             = "forward"
-    forward {
-      stickiness {
-        duration = 3600
-        enabled  = false
+resource "aws_eks_node_group" "main" {
+  cluster_name    = aws_eks_cluster.main.name
+  node_group_name = "techchallenge-dev-node"
+
+  node_role_arn = "arn:aws:iam::080152070993:role/AmazonEKSNodeRole"
+
+  subnet_ids = data.aws_subnets.default.ids
+
+  instance_types = ["t3.small"]
+  capacity_type  = "ON_DEMAND"
+  disk_size      = 20
+
+  scaling_config {
+    desired_size = 2
+    min_size     = 2
+    max_size     = 3
+  }
+
+
+  update_config {
+    max_unavailable = 1
+  }
+
+  depends_on = [
+    aws_eks_addon.vpc_cni
+  ]
+}
+
+# Kube Proxy é criado depois que o Node Group estiver disponível.
+resource "aws_eks_addon" "kube_proxy" {
+  cluster_name = aws_eks_cluster.main.name
+  addon_name   = "kube-proxy"
+
+  depends_on = [
+    aws_eks_node_group.main
+  ]
+}
+
+# CoreDNS precisa de nodes disponíveis para agendar seus Pods.
+resource "aws_eks_addon" "coredns" {
+  cluster_name = aws_eks_cluster.main.name
+  addon_name   = "coredns"
+
+  depends_on = [
+    aws_eks_node_group.main
+  ]
+}
+
+# Policy oficial do AWS Load Balancer Controller.
+#
+# A propriedade description foi intencionalmente omitida.
+# A Policy criada manualmente não possui description e adicioná-la
+# forçaria a substituição do recurso.
+resource "aws_iam_policy" "lb_controller" {
+  name = "AWSLoadBalancerControllerIAMPolicy"
+
+  policy = file(
+    "${path.module}/iam/aws-load-balancer-controller-policy.json"
+  )
+}
+
+# Role assumida pelo Service Account do AWS Load Balancer Controller.
+resource "aws_iam_role" "lb_controller" {
+  name = "AmazonEKSLoadBalancerControllerRole"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Effect = "Allow"
+
+        Principal = {
+          Federated = aws_iam_openid_connect_provider.eks.arn
+        }
+
+        Action = "sts:AssumeRoleWithWebIdentity"
+
+        Condition = {
+          StringEquals = {
+            "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:sub" = "system:serviceaccount:kube-system:aws-load-balancer-controller"
+            "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:aud" = "sts.amazonaws.com"
+          }
+        }
       }
-      target_group {
-        arn    = "arn:aws:elasticloadbalancing:us-east-1:698233916383:targetgroup/techchallenge-dev-api-tg-V2/115ebfe6fc0e0732"
-        weight = 1
-      }
+    ]
+  })
+
+  # Mantém as tags criadas pelo eksctl.
+  tags = {
+    "alpha.eksctl.io/cluster-name"                = "techchallenge-dev"
+    "alpha.eksctl.io/eksctl-version"              = "0.230.0"
+    "alpha.eksctl.io/iamserviceaccount-name"      = "kube-system/aws-load-balancer-controller"
+    "eksctl.cluster.k8s.io/v1alpha1/cluster-name" = "techchallenge-dev"
+  }
+}
+
+# Associa a Policy à Role do Controller.
+resource "aws_iam_role_policy_attachment" "lb_controller" {
+  role       = aws_iam_role.lb_controller.name
+  policy_arn = aws_iam_policy.lb_controller.arn
+}
+
+# Service Account utilizado pelo AWS Load Balancer Controller.
+resource "kubernetes_service_account" "lb_controller" {
+  metadata {
+    name      = "aws-load-balancer-controller"
+    namespace = "kube-system"
+
+    annotations = {
+      "eks.amazonaws.com/role-arn" = aws_iam_role.lb_controller.arn
+    }
+
+    labels = {
+      "app.kubernetes.io/managed-by" = "eksctl"
     }
   }
+
+  depends_on = [
+    aws_eks_node_group.main,
+    aws_iam_role_policy_attachment.lb_controller
+  ]
 }
 
-resource "aws_lb_target_group" "api" {
-  deregistration_delay               = "300"
-  ip_address_type                    = "ipv4"
-  lambda_multi_value_headers_enabled = null
-  load_balancing_algorithm_type      = "round_robin"
-  load_balancing_anomaly_mitigation  = "off"
-  load_balancing_cross_zone_enabled  = "use_load_balancer_configuration"
-  name                               = "techchallenge-dev-api-tg-V2"
-  port                               = 30643
-  protocol                           = "HTTP"
-  protocol_version                   = "HTTP1"
-  proxy_protocol_v2                  = null
-  slow_start                         = 0
-  tags                               = {}
-  tags_all                           = {}
-  target_type                        = "instance"
-  vpc_id                             = "vpc-079bb75c5a7f7678d"
-  health_check {
-    enabled             = true
-    healthy_threshold   = 5
-    interval            = 30
-    matcher             = "200"
-    path                = "/health"
-    port                = "traffic-port"
-    protocol            = "HTTP"
-    timeout             = 5
-    unhealthy_threshold = 2
+# Instala e gerencia o AWS Load Balancer Controller via Helm.
+resource "helm_release" "aws_load_balancer_controller" {
+  name       = "aws-load-balancer-controller"
+  namespace  = "kube-system"
+  repository = "https://aws.github.io/eks-charts"
+  chart      = "aws-load-balancer-controller"
+
+  # Mesma versão atualmente instalada manualmente.
+  version = "3.5.0"
+
+  # Mantém os mesmos valores do release atualmente instalado.
+  atomic          = false
+  cleanup_on_fail = false
+  wait            = true
+  timeout         = 300
+
+  set {
+    name  = "clusterName"
+    value = aws_eks_cluster.main.name
   }
-  stickiness {
-    cookie_duration = 86400
-    cookie_name     = null
-    enabled         = false
-    type            = "lb_cookie"
+
+  set {
+    name  = "serviceAccount.create"
+    value = "false"
+  }
+
+  set {
+    name  = "serviceAccount.name"
+    value = kubernetes_service_account.lb_controller.metadata[0].name
+  }
+
+  # Necessário porque a descoberta automática via Instance Metadata falhou.
+  set {
+    name  = "region"
+    value = "us-east-2"
+  }
+
+  # Necessário porque a descoberta automática da VPC falhou anteriormente.
+  set {
+    name  = "vpcId"
+    value = data.aws_vpc.default.id
+  }
+
+  depends_on = [
+    kubernetes_service_account.lb_controller,
+    aws_eks_addon.vpc_cni,
+    aws_eks_addon.kube_proxy,
+    aws_eks_addon.coredns
+  ]
+}
+
+resource "helm_release" "newrelic" {
+
+  name       = "newrelic-bundle"
+  repository = "https://helm-charts.newrelic.com"
+  chart      = "nri-bundle"
+
+  namespace        = "newrelic"
+  create_namespace = true
+
+  set {
+    name  = "global.licenseKey"
+    value = var.newrelic_license_key
+  }
+
+  set {
+    name  = "global.cluster"
+    value = "techchallenge-dev"
   }
 }
 
-resource "aws_lb" "api" {
-  client_keep_alive                           = 3600
-  customer_owned_ipv4_pool                    = null
-  desync_mitigation_mode                      = "defensive"
-  dns_record_client_routing_policy            = null
-  drop_invalid_header_fields                  = false
-  enable_cross_zone_load_balancing            = true
-  enable_deletion_protection                  = false
-  enable_http2                                = true
-  enable_tls_version_and_cipher_suite_headers = false
-  enable_waf_fail_open                        = false
-  enable_xff_client_port                      = false
-  enable_zonal_shift                          = false
-  idle_timeout                                = 60
-  internal                                    = false
-  ip_address_type                             = "ipv4"
-  load_balancer_type                          = "application"
-  name                                        = "techchallenge-dev-api-alb"
-  preserve_host_header                        = false
-  security_groups                             = ["sg-0c4b0fa0a6d1cb624"]
-  subnets                                     = ["subnet-070a51534012363f7", "subnet-0dd8c43da67ea6c67"]
-  tags                                        = {}
-  tags_all                                    = {}
-  xff_header_processing_mode                  = "append"
-  access_logs {
-    bucket  = ""
-    enabled = false
-    prefix  = null
-  }
-  connection_logs {
-    bucket  = ""
-    enabled = false
-    prefix  = null
-  }
+resource "helm_release" "metrics_server" {
+  name       = "metrics-server"
+  repository = "https://kubernetes-sigs.github.io/metrics-server"
+  chart      = "metrics-server"
+
+  namespace = "kube-system"
+}
+
+resource "helm_release" "kube_state_metrics" {
+  name = "kube-state-metrics"
+
+  repository = "https://prometheus-community.github.io/helm-charts"
+  chart      = "kube-state-metrics"
+
+  namespace = "kube-system"
+
+  depends_on = [
+    aws_eks_node_group.main
+  ]
 }
