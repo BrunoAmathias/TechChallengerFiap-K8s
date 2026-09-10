@@ -100,10 +100,11 @@ resource "aws_eks_node_group" "main" {
   disk_size      = 20
 
   scaling_config {
-    desired_size = 1
-    min_size     = 1
-    max_size     = 2
+    desired_size = 2
+    min_size     = 2
+    max_size     = 3
   }
+
 
   update_config {
     max_unavailable = 1
@@ -258,5 +259,46 @@ resource "helm_release" "aws_load_balancer_controller" {
     aws_eks_addon.vpc_cni,
     aws_eks_addon.kube_proxy,
     aws_eks_addon.coredns
+  ]
+}
+
+resource "helm_release" "newrelic" {
+
+  name       = "newrelic-bundle"
+  repository = "https://helm-charts.newrelic.com"
+  chart      = "nri-bundle"
+
+  namespace        = "newrelic"
+  create_namespace = true
+
+  set {
+    name  = "global.licenseKey"
+    value = var.newrelic_license_key
+  }
+
+  set {
+    name  = "global.cluster"
+    value = "techchallenge-dev"
+  }
+}
+
+resource "helm_release" "metrics_server" {
+  name       = "metrics-server"
+  repository = "https://kubernetes-sigs.github.io/metrics-server"
+  chart      = "metrics-server"
+
+  namespace = "kube-system"
+}
+
+resource "helm_release" "kube_state_metrics" {
+  name = "kube-state-metrics"
+
+  repository = "https://prometheus-community.github.io/helm-charts"
+  chart      = "kube-state-metrics"
+
+  namespace = "kube-system"
+
+  depends_on = [
+    aws_eks_node_group.main
   ]
 }

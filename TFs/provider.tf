@@ -42,7 +42,7 @@ provider "kubernetes" {
   )
 
   exec {
-    api_version = "client.authentication.k8s.io/v1beta1"
+    api_version = "client.authentication.k8s.io/v1"
     command     = "aws"
 
     args = [
@@ -65,7 +65,7 @@ provider "helm" {
     )
 
     exec {
-      api_version = "client.authentication.k8s.io/v1beta1"
+      api_version = "client.authentication.k8s.io/v1"
       command     = "aws"
 
       args = [
@@ -79,3 +79,5 @@ provider "helm" {
     }
   }
 }
+
+
