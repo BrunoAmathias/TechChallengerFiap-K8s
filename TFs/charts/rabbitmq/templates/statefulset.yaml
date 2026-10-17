@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app.kubernetes.io/name: rabbitmq
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: 1
+  serviceName: {{ .Release.Name }}-headless
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: rabbitmq
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: rabbitmq
+        app.kubernetes.io/instance: {{ .Release.Name }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/auth: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        # UID/GID do usuário rabbitmq na imagem oficial
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: rabbitmq
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-auth
+                  key: username
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-auth
+                  key: password
+          ports:
+            - name: amqp
+              containerPort: 5672
+            - name: management
+              containerPort: 15672
+          readinessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 15
+          livenessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "ping"]
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 15
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/rabbitmq
+            - name: config
+              mountPath: /etc/rabbitmq/conf.d/20-oficina.conf
+              subPath: 20-oficina.conf
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Release.Name }}-config
+        {{- if not .Values.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+  {{- if .Values.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.persistence.storageClass }}
+        storageClassName: {{ .Values.persistence.storageClass }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}
+  {{- end }}
