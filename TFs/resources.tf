@@ -95,7 +95,7 @@ resource "aws_eks_node_group" "main" {
 
   subnet_ids = data.aws_subnets.default.ids
 
-  instance_types = ["t3.small"]
+  instance_types = var.node_instance_types
   capacity_type  = "ON_DEMAND"
   disk_size      = 20
 

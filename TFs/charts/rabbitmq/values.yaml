@@ -1,0 +1,34 @@
+image:
+  repository: rabbitmq
+  tag: "4.3-management"
+  pullPolicy: IfNotPresent
+
+# Usuário padrão do broker. A senha é injetada pelo Terraform (set_sensitive).
+auth:
+  username: oficina
+  password: ""
+
+persistence:
+  enabled: true
+  size: 2Gi
+  storageClass: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# No EKS Auto Mode, volumes do StorageClass ebs.csi.eks.amazonaws.com só são
+# montados em nós Auto Mode. O Terraform preenche este seletor quando a
+# persistência está habilitada.
+nodeSelector: {}
+
+# Ajustes do broker (arquivo em /etc/rabbitmq/conf.d)
+config: |
+  vm_memory_high_watermark.relative = 0.6
+  disk_free_limit.absolute = 256MB
+  # Mensagens não confirmadas voltam para a fila após 30 min
+  consumer_timeout = 1800000
